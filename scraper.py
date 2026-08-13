@@ -96,6 +96,8 @@ async def fetch_adzuna(keyword: str, page: int = 1) -> list[dict]:
         try:
             r = await client.get(url)
             r.raise_for_status()
+            # Explicitly ensure the response content is treated as UTF-8
+            r.encoding = 'utf-8'
             results = []
             for j in r.json().get("results", []):
                 created = j.get("created", "")
@@ -164,6 +166,8 @@ async def _get_remoteok_raw() -> list[dict]:
         try:
             r = await client.get("https://remoteok.com/api")
             r.raise_for_status()
+            # Explicitly ensure the response content is treated as UTF-8
+            r.encoding = 'utf-8'
             _remoteok_cache = [j for j in r.json() if isinstance(j, dict) and "position" in j]
             _remoteok_cached_at = now
         except Exception:

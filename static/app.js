@@ -335,9 +335,58 @@ function openDesc(i) {
   document.getElementById("descTitle").textContent = j.title;
   document.getElementById("descCompany").textContent = `🏢 ${j.company}`;
   document.getElementById("descLocation").textContent = `📍 ${j.location}`;
-  document.getElementById("descBody").textContent = j.description || "No description available.";
+  document.getElementById("descBody").innerHTML = `
+    <div style="margin-bottom: 15px;">
+      <textarea id="cvInput" placeholder="Paste your CV here..." style="width:100%; height:150px;"></textarea>
+      <input type="file" id="cvFile" accept="application/pdf" style="margin-top:5px;"/>
+      <button class="btn-primary" style="margin-top:5px;" onclick="personalizeCV('${j.description.replace(/'/g, "\\'")}')">✨ Personalize CV</button>
+    </div>
+    <div id="personalizedResult" style="display:none; margin-top: 15px; border-top: 1px solid #ccc; padding-top: 10px;">
+        <h3>Personalized CV:</h3>
+        <pre id="personalizedContent" style="white-space: pre-wrap; background: #f4f4f4; padding: 10px;"></pre>
+    </div>
+    <hr>
+    ${esc(j.description || "No description available.")}`;
   document.getElementById("descLink").href = j.url;
   document.getElementById("descModal").classList.remove("hidden");
+}
+
+async function personalizeCV(jobDescription) {
+    const cvText = document.getElementById("cvInput").value;
+    const cvFile = document.getElementById("cvFile").files[0];
+    if (!cvText && !cvFile) { alert("Please paste your CV or upload a PDF."); return; }
+    
+    const btn = event.target;
+    btn.textContent = "Personalizing...";
+    btn.disabled = true;
+    
+    const formData = new FormData();
+    formData.append("job_description", jobDescription);
+    if (cvFile) {
+        formData.append("file", cvFile);
+    } else {
+        formData.append("cv_text", cvText);
+    }
+    
+    try {
+        const url = `${API}/personalize-cv?job_description=${encodeURIComponent(jobDescription)}`;
+        const response = await fetch(url, {
+            method: "POST",
+            body: formData,
+        });
+        if (!response.ok) {
+            const err = await response.text();
+            throw new Error(err || "Failed to personalize");
+        }
+        const data = await response.json();
+        document.getElementById("personalizedContent").textContent = data.personalized_cv;
+        document.getElementById("personalizedResult").style.display = "block";
+    } catch (e) {
+        alert("Error: " + e.message);
+    } finally {
+        btn.textContent = "✨ Personalize CV";
+        btn.disabled = false;
+    }
 }
 function closeDescModal() { document.getElementById("descModal").classList.add("hidden"); }
 document.getElementById("descModal").addEventListener("click", e => { if (e.target===e.currentTarget) closeDescModal(); });

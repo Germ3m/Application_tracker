@@ -2,10 +2,14 @@ import asyncio
 import json
 from datetime import datetime
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from PyPDF2 import PdfReader
+import io
+import google.generativeai as genai
+import os
 from db import (init_db, add_application, get_applications, update_status,
                 delete_application, STATUSES, save_cached_jobs, get_cached_jobs,
                 get_new_job_count, get_last_fetched, mark_jobs_seen)
@@ -82,6 +86,49 @@ def remove_application(app_id: int):
     if not delete_application(app_id):
         raise HTTPException(404, "Not found")
     return {"ok": True}
+
+
+@app.post("/api/personalize-cv")
+async def personalize_cv(job_description: str = Query(...), cv_text: str = Query(None), file: UploadFile = File(None)):
+    try:
+        cv = cv_text
+        if file:
+            content = await file.read()
+            # If the user provides a PDF file, try to extract text
+            if file.content_type == 'application/pdf':
+                try:
+                    reader = PdfReader(io.BytesIO(content))
+                    cv = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
+                except Exception:
+                    # Fallback to string decoding if PDF reading fails
+                    cv = content.decode('utf-8', errors='replace')
+            else:
+                # If it's not a PDF, just decode it as a string
+                cv = content.decode('utf-8', errors='replace')
+
+        if not cv:
+            raise HTTPException(status_code=400, detail="No CV text or file provided")
+
+        genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        prompt = f"""
+        Please personalize the following CV for the given job description.
+        Only return the personalized CV content, do not include any other text.
+        
+        Job Description:
+        {job_description}
+        
+        CV:
+        {cv}
+        """
+        response = model.generate_content(prompt)
+        # Ensure we return the text; generate_content may have metadata
+        return {"personalized_cv": response.text if response.text else str(response)}
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        # Return a simple JSON response instead of HTTPException with binary data
+        return {"error": str(e), "traceback": error_details}
 
 
 @app.get("/api/statuses")
